@@ -73,7 +73,13 @@ class NodeData(VertexData):
         -------
         :class:`NodeData`
         '''
-        return super().from_gpkg(gpkg, layername)
+        if type(gpkg) is str:
+            gpkg = GpkgData(gpkg)
+        elif isinstance(gpkg, GpkgData):
+            pass
+        else:
+            raise TypeError("arg 'gpkg' expected type 'str' or 'GpkgData'")
+        return cls.from_layer(NodeLayer(gpkg.sublayer(layername)))
     
     @classmethod
     def from_ml(cls, layername='nodes'):

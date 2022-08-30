@@ -109,7 +109,7 @@ class GraphData:
         ------
         :class:`Edge`
         '''
-        return self.edata.edges(self.vdata, self.ldata, engine)
+        return self.edata.edges(self.vdata, self.ldata)
     
     def expand(self, engine: ElevationQueryEngine) -> None:
         self.vdata.expand(engine)

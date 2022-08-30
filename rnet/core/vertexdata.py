@@ -201,19 +201,16 @@ class VertexData:
         if self.dims == 3:
             return
         
-        def on_finished(result):
-            self.df = pd.concat(
-                [self.df,
-                 pd.DataFrame(result, index=self.df.index, columns=['z'])],
-                axis=1)
-        
         if engine.crs == self.crs:
-            engine.query_task(self.df[['x', 'y']].to_numpy(), on_finished)
+            coords = self.df[['x', 'y']].to_numpy()
         else:
-            engine.query_task(
-                self.crs.transform(self.df[['x', 'y']].to_numpy(), engine.crs),
-                on_finished
-                )
+            coords = self.crs.transform(self.df[['x', 'y']].to_numpy(),
+                                        engine.crs)
+        
+        self.df = pd.concat([
+            self.df,
+            pd.DataFrame(engine.query(coords), index=self.df.index, columns=['z'])
+            ], axis=1)
     
     def flatten(self) -> None:
         '''
@@ -272,7 +269,7 @@ class VertexData:
             pass
         else:
             raise TypeError("expected type 'str' or 'GpkgData' for argument 'gpkg'")
-        return cls.from_vl(gpkg.sublayer(layername))
+        return cls.from_layer(VertexLayer(gpkg.sublayer(layername)))
     
     @classmethod
     def from_ml(cls, layername: str = 'vertices') -> 'VertexData':

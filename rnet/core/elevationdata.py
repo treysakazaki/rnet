@@ -1,19 +1,52 @@
 from dataclasses import dataclass
-from typing import Generator, Callable, List
+from typing import Generator, Callable
 
 import numpy as np
 
-try:
-    from qgis.core import QgsTask
-except:
-    pass
-
-from rnet.core.geometry import indices_in_circle
 from rnet.core.tifsource import TifSource
-from rnet.utils import abspath, create_and_queue
+from rnet.utils import abspath
 
 
 __all__ = ['ElevationQueryEngine']
+
+
+def idw_query(xdata: np.ndarray, ydata: np.ndarray, zdata: np.ndarray,
+              points: np.ndarray, r: float = 1e-3, p: int = 2) -> np.ndarray:
+    '''
+    Parameters
+    ----------
+    xdata : :class:`numpy.ndarray`, shape (nx,)
+        X data from left to right.
+    ydata : :class:`numpy.ndarray`, shape (ny,)
+        Y data from top to bottom.
+    zdata : :class:`numpy.ndarray`, shape (nx, ny)
+        Z data with origin at top-left.
+    points : :class:`numpy.ndarray`, shape (N, 2)
+        Two-dimensional points to query.
+    
+    Returns
+    -------
+    :class:`numpy.ndarray`, shape (N,)
+        Elevations.
+    '''
+    nx = len(xdata)
+    ny = len(ydata) 
+    dx = xdata[1] - xdata[0]
+    dy = ydata[1] - ydata[0]
+    indices_x = np.searchsorted(xdata, points[:,0])
+    indices_y = ny - np.searchsorted(ydata[::-1], points[:,1]) - 1
+    dx = int(r/dx) + 1
+    dy = int(-r/dy) + 1
+    elevs = []
+    for p, xi, yi in zip(points, indices_x, indices_y):
+        left, right = max(0,xi-dx), min(xi+dx+1,nx)
+        top, bottom = max(0,yi-dy), min(yi+dy+1,ny)
+        z = zdata[top:bottom,left:right]  # Elevations of nearby points
+        xs, ys = np.meshgrid(xdata[left:right]-p[0], ydata[top:bottom]-p[1])
+        d = np.sqrt(xs**2 + ys**2)  # Distances to nearby points
+        elev = float(np.sum(z/d) / np.sum(1/d))
+        elevs.append(elev)
+    return np.array(elevs)
 
 
 @dataclass
@@ -245,72 +278,4 @@ class ElevationQueryEngine:
         '''
         xdata, ydata, zdata = self.xdata, self.ydata, self.zdata
         r, p = self.r, self.p
-        
-        N = len(coords)
-        
-        for i, (x, y) in enumerate(coords):
-            report(i/N*100)
-            if (x, y) in self.queried:
-                yield self.queried[(x, y)]
-            else:
-                try:
-                    xi, yi, dists = indices_in_circle(xdata, ydata, x, y, r)
-                except AssertionError:
-                    if ignore_errors:
-                        yield
-                    else:
-                        raise ValueError(f'({x}, {y}) out of bounds')
-                else:
-                    d = np.power(dists, p)
-                    z = np.array(
-                        [zdata[i,j] for (i,j) in np.column_stack([yi,xi])])
-                    elev = float(np.sum(z/d) / np.sum(1/d))
-                    self.queried[(x, y)] = elev
-                    yield elev
-
-    def query_task(self, coords: np.ndarray,
-                   on_finished: Callable[[List[float]], None] = lambda x: None
-                   ) -> None:
-        '''
-        Queues :class:`ElevationQueryTask`.
-        
-        Parameters
-        ----------
-        coords : :class:`numpy.ndarray`, shape (N, 2)
-            Array of coordinates to be transformed.
-        on_finished : :obj:`Callable[[List[float]], None]`, optional
-            Function to call when task is finished. Takes list of elevations as
-            the argument.
-        '''
-        create_and_queue(ElevationQueryTask, self, coords, on_finished)
-
-
-class ElevationQueryTask(QgsTask):
-    '''
-    Task for querying elevations.
-    
-    Parameters
-    ----------
-    engine : :class:`ELevationQueryEngine`
-        Engine for querying elevations.
-    coords : :class:`numpy.ndarray`, shape (N, 2)
-        Array containing coordinates whose elevations are to be queried.
-    on_finished : Callable[[List[float]], None]
-        Function to call when task is finished. Takes list of elevations as the
-        argument.
-    '''
-    
-    def __init__(self, engine: ElevationQueryEngine, coords: np.ndarray,
-                 on_finished: Callable[[List[float]], None]) -> None:
-        super().__init__('Querying elevations')
-        self.engine = engine
-        self.coords = coords
-        self.on_finished = on_finished
-    
-    def run(self) -> bool:
-        self.result = list(self.engine.query(self.coords, report=self.setProgress))
-        return True
-    
-    def finished(self, success: bool) -> None:
-        if success:
-            self.on_finished(self.result)
+        return idw_query(xdata, ydata, zdata, coords, r, p)

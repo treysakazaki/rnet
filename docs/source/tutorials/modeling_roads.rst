@@ -24,13 +24,17 @@ Procedure
     >>> import rnet as rn
     >>> G = rn.GraphData.from_osm("ichihara.osm")
 
-4. Call the :meth:`render` method to display the road network model on the map canvas::
+4. Transform coordinates from EPSG:4326 to EPSG:6677 using the :meth:`transform` method::
+
+    >>> G.transform(6677)
+
+5. Call the :meth:`render` method to display the road network model on the map canvas::
 
     >>> G.render()
 
    The model is visualized using two point layers, ``vertices`` and ``nodes``, and two linestring layers, ``links`` and ``edges``. These layers are all temporary scratch layers, so they will be discarded when QGIS is closed.
 
-5. To save the model for future reference, call the :meth:`to_gpkg` method::
+6. To save the model for future reference, call the :meth:`to_gpkg` method::
 
     >>> G.to_gpkg("ichihara2d.gpkg")
 
