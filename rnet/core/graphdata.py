@@ -40,31 +40,28 @@ class GraphData:
         represented.'''
         return self.vdata.crs
     
-    def edge_coords(self, engine: ElevationQueryEngine=None):
+    @property
+    def dims(self):
+        return self.vdata.dims
+    
+    def edge_coords(self):
         '''
-        Returns the coordinates of the vertices that define each edge in a
-        frame with multi-index ['i', 'j'] and column 'coords'. Coordinates are
-        taken from the vertex data accessible via the :attr:`vdata` property.
-        
-        Parameters
-        ----------
-        engine : :class:`ElevationQueryEngine`, optional
-            Engine for querying vertex elevations.
+        Returns the coordinates of the vertices that define each edge.
         
         Returns
         -------
-        pandas.DataFrame
+        :class:`pandas.DataFrame`
+            Frame with multi-index ['i', 'j'] and column 'coords'.
         
         See also
         --------
         :meth:`EdgeData.coords`
         '''
-        return self.edata.coords(self.vdata, engine)
+        return self.edata.coords(self.vdata)
     
     def edge_lengths(self, dst=None):
         '''
-        Returns frame containing edge lengths. Lengths are provided in the CRS
-        specified by `dst`.
+        Returns edge lengths.
         
         Paramters
         ---------
@@ -77,17 +74,14 @@ class GraphData:
         :class:`pandas.DataFrame`
             Frame with multi-index ['i', 'j'] and column 'length'.
         '''
-        if self._edge_lengths is None or self._edge_lengths[0] != dst:
-            if dst is None:
-                df = self.edata.lengths(self.vdata)
-            else:
-                df = self.edata.lengths(self.vdata.transformed(dst))
-            self._edge_lengths = (dst, df)
-        return self._edge_lengths[1]
+        if dst is None:
+            return self.edata.lengths(self.vdata)
+        else:
+            return self.edata.lengths(self.vdata.transformed(dst))
     
     def edge_tags(self):
         '''
-        Returns frame containing edge tags.
+        Returns edge tags.
         
         Returns
         -------
@@ -96,7 +90,7 @@ class GraphData:
         '''
         return self.edata.tags(self.ldata)
     
-    def edges(self, engine=None):
+    def edges(self):
         '''
         Yields edges in the data set.
         
@@ -114,6 +108,10 @@ class GraphData:
     def expand(self, engine: ElevationQueryEngine) -> None:
         self.vdata.expand(engine)
         self.ndata.df['z'] = self.vdata.df['z'].loc[self.ndata.df.index]
+    
+    def flatten(self) -> None:
+        self.vdata.flatten()
+        self.ndata.flatten()
     
     @classmethod
     def from_gpkg(cls, path_to_gpkg):

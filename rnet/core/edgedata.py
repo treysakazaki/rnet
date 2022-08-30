@@ -312,12 +312,24 @@ class EdgeData:
         
         Keyword arguments
         -----------------
-        xmin, ymin, zmin, xmax, ymax, zmax : :obj:`float`, optional
-            Coordinates specifying the desired region.
+        xmin : :obj:`float`, optional
+            Minimum :math:`x`-coordinate.
+        ymin : :obj:`float`, optional
+            Minimum :math:`y`-coordinate.
+        xmax : :obj:`float`, optional
+            Maximum :math:`x`-coordinate.
+        ymax : :obj:`float`, optional
+            Maximum :math:`y`-coordinate.
         
         Returns
         -------
         :class:`EdgeData`
+        
+        Example
+        -------
+            >>> G = rn.GraphData.from_osm(<path/to/osm>)
+            >>> masked = G.edata.masked(G.vdata, xmin=140.1, ymin=35.4, xmax=140.2, ymax=35.5)
+            >>> masked.render()
         '''
         vdata_masked = vdata.masked(**kwargs)
         bools = np.isin(

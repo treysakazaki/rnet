@@ -206,7 +206,6 @@ class VertexData:
         else:
             coords = self.crs.transform(self.df[['x', 'y']].to_numpy(),
                                         engine.crs)
-        
         self.df = pd.concat([
             self.df,
             pd.DataFrame(engine.query(coords), index=self.df.index, columns=['z'])

@@ -1,14 +1,14 @@
 Modeling a Road Network
 =======================
 
-In this tutorial, we will create a two-dimensional road network model of Ichihara City in Chiba Prefecture, Japan.
+In this tutorial, we will create a two-dimensional model of the road network in Ichihara City.
 
 Materials
 ---------
 
 This tutorial requires the following materials:
 
-    - street map data of Ichihara City.
+    - street map data of Ichihara City (``ichihara.osm``).
 
 Procedure
 ---------
