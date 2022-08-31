@@ -1,13 +1,56 @@
 Edges
 =====
 
-.. currentmodule:: rnet.core.edgedata
+.. currentmodule:: rnet
 
-.. autoclass:: EdgeData
-    
-    **Methods**
+Constructor
+-----------
 
-    .. autosummary::
-        :toctree: generated
+.. autosummary::
+    :toctree: generated/
 
-        ~EdgeData.masked
+    EdgeData
+
+Descriptions
+------------
+
+.. autosummary::
+    :toctree: generated/
+
+    ~EdgeData.coords
+    ~EdgeData.lengths
+    ~EdgeData.tags
+
+Iteration
+---------
+
+.. autosummary::
+    :toctree: generated/
+
+    ~EdgeData.edges
+
+Manipulation
+------------
+
+.. autosummary::
+    :toctree: generated/
+
+    ~EdgeData.masked
+
+Visualization
+-------------
+
+.. autosummary::
+    :toctree: generated/
+
+    ~EdgeData.generate
+    ~EdgeData.render
+
+IO
+--
+
+.. autosummary::
+    :toctree: generated/
+
+    ~EdgeData.from_gpkg
+    ~EdgeData.to_gpkg

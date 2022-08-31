@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import chain
-from typing import Callable, Generator, Set, Tuple
+from typing import Callable, Generator, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -96,9 +96,11 @@ class EdgeData:
     
     Parameters
     ----------
-    df : pandas.DataFrame
+    df : :class:`pandas.DataFrame`
         Frame containing edge data with multi-index ['i', 'j'] and column
         'vsequence'.
+    layer : :class:`EdgeLayer`
+        Layer for visualizing edge data.
     '''
     
     df: pd.DataFrame = field(repr=False)
@@ -109,9 +111,10 @@ class EdgeData:
     
     def coords(self, vdata: VertexData) -> pd.DataFrame:
         '''
-        Returns frame with multi-index ['i', 'j'] and column 'coords'.
+        Returns frame containing edge coordinates.
         
-        Edge coordinates are represented by an :class:`numpy.ndarray`.
+        Edge coordinates are stored in a :class:`numpy.ndarray` of shape
+        (N, 2), where N is the number of vertices along the edge.
         
         Parameters
         ----------
@@ -122,6 +125,7 @@ class EdgeData:
         Returns
         -------
         :class:`pandas.DataFrame`
+            Frame with multi-index ['i', 'j'] and column 'coords'.
         '''
         vcoords = vdata.df.to_numpy()[
             np.fromiter(chain.from_iterable(self.df['vsequence']), int)
@@ -132,7 +136,7 @@ class EdgeData:
             vcoords = vcoords[length:]
         return pd.DataFrame(coords, index=self.df.index, columns=['coords'])
     
-    def edges(self, vdata: VertexData, ldata: LinkData, **kwargs
+    def edges(self, vdata: VertexData, ldata: LinkData
               ) -> Generator[Edge, None, None]:
         '''
         Yields edges in the data set.
@@ -145,20 +149,6 @@ class EdgeData:
         ldata : :class:`LinkData`
             Link data that provides that tags of the links along each edge.
         
-        Keyword arguments
-        -----------------
-        area : :obj:`Tuple[float, float, float, float]`, optional
-            4-tuple specifying :math:`(x, y)` coordinates of the bottom-left
-            and top-right of a rectangular area.
-        mode : {1, 2, 3}, optional
-            Mode for selecting edge features:
-                
-            1. at least one endpoint is in the `area`,
-            2. both endpoints are in the `area`, or
-            3. all vertices are in the `area`.
-            
-            The default is 1.
-        
         Yields
         ------
         :class:`Edge`
@@ -169,39 +159,46 @@ class EdgeData:
             yield Edge(*row, crs)
 
     @classmethod
-    def from_gpkg(cls, gpkg, layername='edges'):
+    def from_gpkg(cls, gpkg: Union[str, GpkgData], layername: str = 'edges'
+                  ) -> 'EdgeData':
         '''
         Instantiates :class:`EdgeData` from a GeoPackage layer.
         
         Parameters
         ----------
-        gpkg : :class:`GpkgData` or str
-            :class:`GpkgData` object or path specifying the GeoPackage
-            containing the vertex data.
-        layername : str, optional
-            Name of the layer containing the vertex data. The default is
-            'edges'.
+        gpkg : :obj:`str` or :class:`GpkgData`
+            Path or :class:`GpkgData` instance specifying the GeoPackage
+            to read.
+        layername : :obj:`str`, optional
+            Name of the layer to read. The default is 'edges'.
         
         Returns
         -------
         :class:`EdgeData`
+        
+        Raises
+        ------
+        TypeError
+            If `gpkg` is unexpected type.
+        LayerNotFoundError
+            If layer with the specified name does not exist.
         '''
         if type(gpkg) is str:
             gpkg = GpkgData(gpkg)
         elif isinstance(gpkg, GpkgData):
             pass
         else:
-            raise TypeError("expected type 'str' or 'GpkgData' for argument 'gpkg'")
+            raise TypeError("arg 'gpkg' expected type 'str' or 'GpkgData'")
         return cls.from_vl(gpkg.sublayer(layername))
     
     @classmethod
-    def from_ml(cls, layername='edges'):
+    def from_ml(cls, layername: str = 'edges') -> 'EdgeData':
         '''
-        Instantiates :class:`EdgeData` from map layer with specified name.
+        Instantiates :class:`EdgeData` from a map layer.
         
         Parameters
         ----------
-        layername : str, optional
+        layername : :obj:`str`, optional
             Layer name. The default is 'edges'.
         
         Returns
@@ -249,7 +246,9 @@ class EdgeData:
                  report: Callable[[float], None] = lambda x: None
                  ) -> Generator[QgsFeature, None, None]:
         '''
-        Yields link features with line geometry and attributes 'fid', 'i', 'j',
+        Yields edge features.
+        
+        Edge features have linestring geometry and attributes 'fid', 'i', 'j',
         and 'tag'.
         
         Parameters
@@ -259,12 +258,12 @@ class EdgeData:
             each edge.
         ldata : :class:`LinkData`
             Link data that provides the tags of the links along each edge.
-        report : Callable[float, None], optional
+        report : :obj:`Callable[float, None]`, optional
             Function for reporting generator progress.
         
         Yields
         ------
-        qgis.core.QgsFeature
+        :class:`qgis.core.QgsFeature`
         '''
         N = len(self.df)
         for i, edge in enumerate(self.edges(vdata, ldata), 1):
@@ -273,33 +272,28 @@ class EdgeData:
     
     def lengths(self, vdata: VertexData) -> pd.DataFrame:
         '''
-        Returns frame with multi-index ['i', 'j'] and column 'length'.
+        Returns frame containing edge lengths.
+        
+        Lengths are represented in the units of the CRS in which vertex
+        coordinates are represented.
         
         Parameters
         ----------
         vdata : :class:`VertexData`
             Vertex data which provides the coordinates of the vertices along
             each edge.
-                
+
         Returns
         -------
-        pandas.DataFrame
-                    
-        Note
-        ----
-        Lengths are represented in the unit of the CRS in which vertex
-        coordinates are represented.
-        
-        See also
-        --------
-        :attr:`VertexData.crs`
-        
-        :meth:`CRS.units`
+        :class:`pandas.DataFrame`
+            Frame with multi-index ['i', 'j'] and column 'length'.
         '''
         lengths = map(edge_length, self.coords(vdata)['coords'].to_list())
         return pd.DataFrame(lengths, index=self.df.index, columns=['length'])
 
-    def masked(self, vdata: VertexData, **kwargs) -> 'EdgeData':
+    def masked(self, vdata: VertexData, *, xmin: float = None,
+               ymin: float = None, xmax: float = None, ymax: float = None
+               ) -> 'EdgeData':
         '''
         Returns dataset containing only the edges whose vertices are all located
         within the specified region.
@@ -309,9 +303,6 @@ class EdgeData:
         vdata : :class:`VertexData`
             Vertex data which provides the coordinates of the vertices along
             each edge.
-        
-        Keyword arguments
-        -----------------
         xmin : :obj:`float`, optional
             Minimum :math:`x`-coordinate.
         ymin : :obj:`float`, optional
@@ -325,12 +316,13 @@ class EdgeData:
         -------
         :class:`EdgeData`
         
-        Example
-        -------
+        Examples
+        --------
             >>> G = rn.GraphData.from_osm(<path/to/osm>)
             >>> masked = G.edata.masked(G.vdata, xmin=140.1, ymin=35.4, xmax=140.2, ymax=35.5)
             >>> masked.render()
         '''
+        kwargs = {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax}
         vdata_masked = vdata.masked(**kwargs)
         bools = np.isin(
             np.fromiter(chain.from_iterable(self.df['vsequence']), int),
@@ -346,8 +338,8 @@ class EdgeData:
     def render(self, vdata: VertexData, ldata: LinkData, groupname: str = '',
                index: int = 0, **kwargs) -> None:
         '''
-        Renders a newly created vector layer that is populated with edge
-        features. The existing layer is overwritten.
+        Renders a vector layer, populated with edge features. The existing
+        layer is overwritten.
         
         Parameters
         ----------
@@ -355,23 +347,17 @@ class EdgeData:
             Vertex data which provides the coordinates of the vertices along
             each edge.
         ldata : :class:`LinkData`
-            Link data that provides the tags of the links along each edge.
+            Link data which provides the tags of the links along each edge.
         groupname : :obj:`str`, optional
-            Name of group to which the new layer is inserted. The default is
-            ''.
+            Name of group to which the layer is inserted. The default is ''.
         index : :obj:`int`, optional
-            Index within the group to which the layer is inserted. The default
+            Index within the group at which the layer is inserted. The default
             is 0.
         
         Keyword arguments
         -----------------
         **kwargs : :obj:`dict`, optional
-            Keyword arguments that are used to define the renderer settings.
-        
-        See also
-        --------
-        :meth:`EdgeLayer.renderer`:
-            Returns renderer for the link layer.
+            Keyword arguments for customizing the renderer.
         '''
         if self.layer is None:
             self.layer = EdgeLayer.create(vdata.crs.epsg)
@@ -381,11 +367,11 @@ class EdgeData:
             self.layer.render(ldata.tags, **kwargs)
         self.layer.add(groupname, index)
 
-    def tags(self, ldata):
+    def tags(self, ldata: LinkData) -> pd.DataFrame:
         '''
-        Returns frame with multi-index ['i', 'j'] and column 'tag'.
+        Returns frame containing edge tags.
         
-        Edges inherit the tag of the first link in their vertex sequence.
+        Edges inherit the tag of the first link in their sequence.
         
         Parameters
         ----------
@@ -394,33 +380,36 @@ class EdgeData:
         
         Returns
         -------
-        pandas.DataFrame
+        :class:`pandas.DataFrame`
+            Frame with multi-index ['i', 'j'] and column 'tag'.
         '''
         tags = ldata.df['tag'].loc[map(
             tuple, np.sort([x[:2] for x in self.df['vsequence'].to_list()])
             )]
         return pd.DataFrame(tags.to_list(), index=self.df.index, columns=['tag'])
 
-    def to_gpkg(self, vdata, ldata, gpkg, layername='edges'):
+    def to_gpkg(self, vdata: VertexData, ldata: LinkData,
+                gpkg: Union[str, GpkgData], layername: str = 'edges') -> None:
         '''
-        Saves edge features to a GPKG layer. If there exists a
-        :class:`EdgeLayer` associated with the instance, then the contents
-        of the layer are saved. Otherwise, features generated by the
-        :meth:`generate` method are saved.
+        Saves edge features to a GPKG layer.
+        
+        If there exists a :class:`EdgeLayer` associated with the instance,
+        then the contents of the layer are saved. Otherwise, features
+        generated by the :meth:`generate` method are saved.
         
         Parameters
         ----------
         vdata : :class:`VertexData`
-            Vertex data that provides the coordinates of the vertices along
+            Vertex data which provides the coordinates of the vertices along
             each edge.
         ldata : :class:`LinkData`
-            Link data that provides the tags of the links along each edge.
-        gpkg : :class:`GpkgData` or str
-            :class:`GpkgData` object or path specifying the GPKG layer to which
-            vertices will be saved.
+            Link data which provides the tags of the links along each edge.
+        gpkg : :obj:`str` or :class:`GpkgData`
+            Path or :class:`GpkgData` instance specifying the GeoPackage to
+            which edge data is saved.
         layername : str, optional
-            Name of the GPKG layer to which vertices are saved. The default
-            is 'vertices'.
+            Name of the GeoPackage layer to which edges are saved. The default
+            is 'edges'.
         '''
         if type(gpkg) is str:
             gpkg = GpkgData(gpkg)
