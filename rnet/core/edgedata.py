@@ -89,7 +89,6 @@ class Edge(Element):
         self.coords = np.flip(self.coords, axis=0)
 
 
-@dataclass
 class EdgeData:
     '''
     Class for representing undirected edge data.
@@ -103,8 +102,9 @@ class EdgeData:
         Layer for visualizing edge data.
     '''
     
-    df: pd.DataFrame = field(repr=False)
-    layer: Layer = None
+    def __init__(self, df: pd.DataFrame, layer: 'EdgeLayer' = None):
+        self.df = df
+        self.layer = layer
     
     def __contains__(self, ij: Tuple[int, int]) -> bool:
         return ij in self.df.index

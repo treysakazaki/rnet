@@ -112,35 +112,33 @@ class Vertex3d(Vertex2d):
     z: float
 
 
-@dataclass
 class VertexData:
     '''
-    Class for representing vertex data. Vertices are the points defined in an
-    OSM file to describe the geometry of each road.
+    Class for representing vertex data.
+    
+    Vertices are the points used to define the geometry of each road.
     
     Parameters
     ----------
-    df : pandas.DataFrame
-        Frame containing vertex coordinates with index 'id' and columns
-        ['x', 'y'] for two-dimensional vertices, or ['x', 'y', 'z'] for
-        three-dimensional coordinates.
+    df : :class:`pandas.DataFrame`
+        Frame containing vertex data with index 'id' and columns ['x', 'y']
+        for two-dimensional vertices, or ['x', 'y', 'z'] for three-dimensional
+        coordinates.
     crs : :obj:`int` or :class:`CRS`
-        EPSG code or CRS in which vertex coordinates are represented.
+        EPSG code or :class:`CRS` instance describing CRS in which vertex
+        coordinates are represented.
     layer : :class:`VertexLayer`, optional
         Layer for rendering vertex features.
     '''
     
-    df: pd.DataFrame = field(repr=False)
-    crs: Union[int, CRS]
-    layer: 'VertexLayer' = None
-    
-    def __post_init__(self):
+    def __init__(self, df: pd.DataFrame, crs: Union[int, CRS],
+                 layer: 'VertexLayer' = None) -> None:
+        self.df = df
         if type(self.crs) is int:
-            self.crs = CRS(self.crs)
-        elif isinstance(self.crs, CRS):
-            pass
-        else:
-            raise TypeError("expected 'str' or 'CRS' for argument 'crs'")
+            self.crs = CRS(crs)
+        elif isinstance(crs, CRS):
+            self.crs = crs
+        self.layer = layer
     
     def __contains__(self, id: int) -> bool:
         return id in self.df.index
@@ -163,13 +161,14 @@ class VertexData:
         engine : :class:`ElevationQueryEngine`
             Engine for querying vertex elevations.
         include_xy : :obj:`bool`, optional
-            Whether to include the `x`- and `y`-coordinates in the resulting
-            frame. The default is False.
+            If True, columns 'x' and 'y' are included in the resulting frame
+            in addition to the column 'z'. The default is False.
         
         Returns
         -------
-        pandas.DataFrame
-            Frame with index 'id' and column 'z' or columns ['x', 'y', 'z'].
+        :class:`pandas.DataFrame`
+            If `include_xy` is True, frame with index 'id' and columns
+            ['x', 'y', 'z']. Otherwise, frame with index 'id' and column 'z'.
         
         See also
         --------
@@ -247,11 +246,11 @@ class VertexData:
         
         Parameters
         ----------
-        gpkg : :class:`GpkgData` or :obj:`str`
-            :class:`GpkgData` object or path specifying the GeoPackage
-            containing the vertex data.
+        gpkg : :obj:`str` or :class:`GpkgData`
+            Path or :class:`GpkgData` instance specifying the GeoPackage
+            containing vertex data.
         layername : str, optional
-            Name of the layer containing the vertex data. The default is
+            Name of the layer containing vertex data. The default is
             'vertices'.
         
         Returns
@@ -277,7 +276,7 @@ class VertexData:
         
         Parameters
         ----------
-        layername : str, optional
+        layername : :obj:`str`, optional
             Layer name. The default is 'vertices'.
         
         Returns
@@ -300,17 +299,17 @@ class VertexData:
     def generate(self, report: Callable[[float], None] = lambda x: None
                  ) -> Generator[QgsFeature, None, None]:
         '''
-        Yields vertex features with point geometry and attributes 'id', 'x',
-        and 'y'.
+        Yields vertex features. Vertex features have point geometry and
+        attributes 'id', 'x', and 'y'.
         
         Parameters
         ----------
-        report : Callable[[float], None], optional
+        report : :obj:`Callable[[float], None]`, optional
             Function for reporting generator progress.
         
         Yields
         ------
-        qgis.core.QgsFeature
+        :class:`qgis.core.QgsFeature`
         '''
         N = len(self.df)
         for i, vertex in enumerate(self.vertices(), 1):
@@ -324,8 +323,8 @@ class VertexData:
         Returns dataset containing only the vertices that are located within
         the specified region.
         
-        Keyword arguments
-        -----------------
+        Parameters
+        ----------
         xmin, ymin, zmin, xmax, ymax, zmax : :obj:`float`, optional
             Coordinates specifying the desired region.
         
@@ -369,7 +368,7 @@ class VertexData:
     
     def render(self, groupname: str = '', index: int = 0, **kwargs) -> None:
         '''
-        Renders vertex features. Existing features is overwritten.
+        Renders vertex features. Existing features are overwritten.
 
         Parameters
         ----------

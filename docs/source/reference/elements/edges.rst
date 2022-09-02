@@ -3,16 +3,19 @@ Edges
 
 .. currentmodule:: rnet
 
-Constructor
------------
+Constructors
+------------
 
 .. autosummary::
     :toctree: generated/
 
     EdgeData
+    ~EdgeData.from_gpkg
 
 Descriptions
 ------------
+
+Edges are defined by a sequence of vertices whose IDs are stored in the :attr:`EdgeData.df` frame. The following methods provide further descriptions of each edge in the dataset.
 
 .. autosummary::
     :toctree: generated/
@@ -28,6 +31,7 @@ Iteration
     :toctree: generated/
 
     ~EdgeData.edges
+    ~EdgeData.generate
 
 Manipulation
 ------------
@@ -37,20 +41,11 @@ Manipulation
 
     ~EdgeData.masked
 
-Visualization
--------------
+Output
+------
 
 .. autosummary::
     :toctree: generated/
 
-    ~EdgeData.generate
     ~EdgeData.render
-
-IO
---
-
-.. autosummary::
-    :toctree: generated/
-
-    ~EdgeData.from_gpkg
     ~EdgeData.to_gpkg

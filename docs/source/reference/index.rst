@@ -2,6 +2,6 @@ Reference
 =========
 
 .. toctree::
-    :maxdepth: 1
+    :maxdepth: 2
 
-    elements/edges
+    elements/index

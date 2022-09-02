@@ -4,37 +4,24 @@
 .. currentmodule:: rnet
 
 .. autoclass:: EdgeData
+    
+       
+    .. rubric:: Methods
 
-   
-   .. automethod:: __init__
+    .. autosummary::
+    
+        
+        coords
+        edges
+        from_gpkg
+        from_ml
+        from_vl
+        generate
+        lengths
+        masked
+        render
+        tags
+        to_gpkg
+    
 
-   
-   .. rubric:: Methods
-
-   .. autosummary::
-   
-      ~EdgeData.__init__
-      ~EdgeData.coords
-      ~EdgeData.edges
-      ~EdgeData.from_gpkg
-      ~EdgeData.from_ml
-      ~EdgeData.from_vl
-      ~EdgeData.generate
-      ~EdgeData.lengths
-      ~EdgeData.masked
-      ~EdgeData.render
-      ~EdgeData.tags
-      ~EdgeData.to_gpkg
-   
-   
-
-   
-   
-   .. rubric:: Attributes
-
-   .. autosummary::
-   
-      ~EdgeData.layer
-      ~EdgeData.df
-   
-   
+    
