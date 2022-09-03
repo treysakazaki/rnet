@@ -123,7 +123,7 @@ class MapData:
             pass
         else:
             nodes.update(add)
-        return NodeData(self.vdata.df.loc[sorted(nodes)], self.vdata.crs)
+        return NodeData(self.vdata.df.loc[sorted(nodes)])
     
     def render(self, groupname: str = '', params: dict = {}):
         self.vdata.render(groupname, **params.get('vertices', {}))

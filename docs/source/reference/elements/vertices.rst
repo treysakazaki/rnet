@@ -11,7 +11,6 @@ Constructors
 
     VertexData
     ~VertexData.from_gpkg
-    ~VertexData.from_layer
     ~VertexData.from_ml
 
 Descriptions
@@ -20,6 +19,7 @@ Descriptions
 .. autosummary::
     :toctree: generated/
 
+    ~VertexData.crs
     ~VertexData.elevations
 
 Iteration

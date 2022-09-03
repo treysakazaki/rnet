@@ -52,8 +52,10 @@ class Node3d(Vertex3d):
     pass
 
 
-@dataclass
 class NodeData(VertexData):
+    
+    def __init__(self, df, layer=None):
+        super().__init__(df)
     
     @classmethod
     def from_gpkg(cls, gpkg, layername='nodes'):
@@ -79,7 +81,7 @@ class NodeData(VertexData):
             pass
         else:
             raise TypeError("arg 'gpkg' expected type 'str' or 'GpkgData'")
-        return cls.from_layer(NodeLayer(gpkg.sublayer(layername)))
+        return cls._from_layer(NodeLayer(gpkg.sublayer(layername)))
     
     @classmethod
     def from_ml(cls, layername='nodes'):

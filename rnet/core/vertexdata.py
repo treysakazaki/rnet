@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Generator, List, Union
 
 import numpy as np
@@ -121,30 +121,27 @@ class VertexData:
     Parameters
     ----------
     df : :class:`pandas.DataFrame`
-        Frame containing vertex data with index 'id' and columns ['x', 'y']
+        Frame summarizing vertex dataset. with index 'id' and columns ['x', 'y']
         for two-dimensional vertices, or ['x', 'y', 'z'] for three-dimensional
         coordinates.
-    crs : :obj:`int` or :class:`CRS`
-        EPSG code or :class:`CRS` instance describing CRS in which vertex
-        coordinates are represented.
     layer : :class:`VertexLayer`, optional
         Layer for rendering vertex features.
     '''
     
-    def __init__(self, df: pd.DataFrame, crs: Union[int, CRS],
-                 layer: 'VertexLayer' = None) -> None:
+    def __init__(self, df: pd.DataFrame, layer: 'VertexLayer' = None):
         self.df = df
-        if type(self.crs) is int:
-            self.crs = CRS(crs)
-        elif isinstance(crs, CRS):
-            self.crs = crs
         self.layer = layer
-    
-    def __contains__(self, id: int) -> bool:
-        return id in self.df.index
-    
-    def __len__(self) -> int:
-        return len(self.df)
+        
+    @property
+    def crs(self):
+        ''':class:`CRS`: CRS in which vertex coordinates are represented.
+        
+        Raises
+        ------
+        KeyError
+            If ``crs`` attribute is missing from data frame.
+        '''
+        return CRS(self.df.attrs['crs'])
     
     @property
     def dims(self):
@@ -219,7 +216,7 @@ class VertexData:
         self.df = self.df[['x', 'y']]
     
     @classmethod
-    def from_layer(cls, layer: 'VertexLayer') -> 'VertexData':
+    def _from_layer(cls, layer: 'VertexLayer') -> 'VertexData':
         '''
         Instantiates :class:`VertexData` from a layer.
         
@@ -236,7 +233,8 @@ class VertexData:
         df = pd.DataFrame(attrs[:,2:].astype(float), index=attrs[:,1],
                           columns=layer.field_names[2:])
         df.index.name = 'id'
-        return cls(df, layer.crs, layer)
+        df.attrs['crs'] = layer.crs.epsg
+        return cls(df, layer)
     
     @classmethod
     def from_gpkg(cls, gpkg: Union[str, GpkgData], layername: str = 'vertices'
@@ -267,7 +265,7 @@ class VertexData:
             pass
         else:
             raise TypeError("expected type 'str' or 'GpkgData' for argument 'gpkg'")
-        return cls.from_layer(VertexLayer(gpkg.sublayer(layername)))
+        return cls._from_layer(VertexLayer(gpkg.sublayer(layername)))
     
     @classmethod
     def from_ml(cls, layername: str = 'vertices') -> 'VertexData':
@@ -290,7 +288,7 @@ class VertexData:
         '''
         vl = QgsProject.instance().mapLayersByName(f'{layername}')
         if len(vl) == 1:
-            return cls.from_layer(VertexLayer(vl[0]))
+            return cls._from_layer(VertexLayer(vl[0]))
         elif len(vl) == 0:
             raise ValueError(f'no map layers named {layername!r}')
         else:
@@ -315,6 +313,9 @@ class VertexData:
         for i, vertex in enumerate(self.vertices(), 1):
             report(i/N*100)
             yield vertex.feature(i)
+    
+    def info(self):
+        pass
     
     def masked(self, *, xmin: float = None, ymin: float = None,
                zmin: float = None, xmax: float = None, ymax: float = None,
@@ -465,8 +466,8 @@ class VertexData:
         Returns a new :class:`VertexData` instance with vertex coordinates
         transformed.
         
-        Paramters
-        ---------
+        Parameters
+        ----------
         dst : int
             EPSG code of destination CRS.
         

@@ -6,9 +6,16 @@ from rnet.core.layer import Layer
 
 
 @dataclass
-class Data(ABC):
+class Dataset(ABC):
     '''
     Base class for representing datasets.
+    
+    Parameters
+    ----------
+    df : :class:`pandas.DataFrame`
+        Frame summarizing dataset.
+    layer : :class:`Layer`, optional
+        Layer for visualizing dataset.
     '''
     
     df: pd.DataFrame

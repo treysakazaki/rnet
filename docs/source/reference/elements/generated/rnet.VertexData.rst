@@ -15,9 +15,9 @@
         expand
         flatten
         from_gpkg
-        from_layer
         from_ml
         generate
+        info
         masked
         rand
         render
@@ -33,5 +33,6 @@
 
     .. autosummary::
     
+        crs
         dims
     

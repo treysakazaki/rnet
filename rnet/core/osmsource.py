@@ -247,7 +247,8 @@ class OsmSource(Source):
         coords = np.unique(np.concatenate(self.roads()), axis=0)
         df = pd.DataFrame(coords, columns=['x', 'y'])
         df.index.name = 'id'
-        vdata = VertexData(df, 4326)
+        df.attrs['crs'] = 4326
+        vdata = VertexData(df)
         if dst != 4326:
             vdata.transform(dst)
         return vdata
