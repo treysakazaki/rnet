@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import chain
@@ -25,6 +26,7 @@ from rnet.core.layer import Layer, GpkgData
 from rnet.core.linkdata import  LinkData
 from rnet.core.vertexdata import VertexData
 from rnet.utils import line_geometry, categorized_road_renderer
+from rnet.utils.algorithms import ccl
 
 
 __all__ = ['Edge', 'EdgeData', 'EdgeLayer']
@@ -102,6 +104,8 @@ class EdgeData:
         Layer for visualizing edge data.
     '''
     
+    DEFAULT_NAME = 'edges'
+    
     def __init__(self, df: pd.DataFrame, layer: 'EdgeLayer' = None):
         self.df = df
         self.layer = layer
@@ -127,7 +131,7 @@ class EdgeData:
         :class:`pandas.DataFrame`
             Frame with multi-index ['i', 'j'] and column 'coords'.
         '''
-        vcoords = vdata.df.to_numpy()[
+        vcoords = vdata.df[['x', 'y']].to_numpy()[
             np.fromiter(chain.from_iterable(self.df['vsequence']), int)
             ]
         coords = []
@@ -291,6 +295,13 @@ class EdgeData:
         lengths = map(edge_length, self.coords(vdata)['coords'].to_list())
         return pd.DataFrame(lengths, index=self.df.index, columns=['length'])
 
+    def neighbors(self):
+        neighbors = defaultdict(set)
+        for (i, j) in self.df.index:
+            neighbors[i].add(j)
+            neighbors[j].add(i)
+        return dict(neighbors)
+
     def masked(self, vdata: VertexData, *, xmin: float = None,
                ymin: float = None, xmax: float = None, ymax: float = None
                ) -> 'EdgeData':
@@ -366,6 +377,14 @@ class EdgeData:
         if len(kwargs) > 0:
             self.layer.render(ldata.tags, **kwargs)
         self.layer.add(groupname, index)
+
+    def simplified(self):
+        clusters = ccl(self.neighbors())
+        keep = np.argmax(list(map(len, clusters)))
+        edges = self.df.index.to_frame().to_numpy()
+        mask = np.all(np.isin(edges.flatten(), np.array(list(clusters[keep]))
+            ).reshape(-1,2), axis=1)
+        return EdgeData(self.df.loc[mask])
 
     def tags(self, ldata: LinkData) -> pd.DataFrame:
         '''

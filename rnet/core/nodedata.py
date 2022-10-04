@@ -1,62 +1,117 @@
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Generator
+import numpy as np
+import pandas as pd
+from typing import Callable, Generator, Dict, List
 try:
-    from qgis.core import QgsFeature
+    from qgis.core import (
+        QgsFeature,
+        QgsGeometry,
+        QgsSingleSymbolRenderer
+        )
 except:
     pass
-from rnet.core.vertexdata import (
-    Vertex2d,
-    Vertex3d,
-    VertexData,
-    VertexLayer
-    )
-from rnet.core.layer import GpkgData
+from rnet.core.vertexdata import VertexData
+from rnet.core.element import Element
+from rnet.core.layer import Layer, GpkgData
+from rnet.elements.placedata import PlaceData
+from rnet.utils import point_geometry, rulebased_node_renderer
 
 
-__all__ = ['Node2d', 'Node3d', 'NodeData', 'NodeLayer']
+__all__ = ['Node', 'NodeData', 'NodeLayer']
 
 
 @dataclass
-class Node2d(Vertex2d):
+class Node(Element):
     '''
-    Data class representing two-dimensional nodes.
+    Class for representing a node item.
+    
+    Nodes represent intersections and dead ends in a road network.
     
     Parameters
     ----------
     id : int
         Node ID.
-    x : float
-        `x`-coordinate.
-    y : float
-        `y`-coordinate.
+    x, y : float
+        :math:`x`- and :math:`y`-coordinates.
+    z : :obj:`float`, optional
+        :math:`z`-coordinate. The default is None.
+    gr : :obj:`int`, optional
+        Group to which the node belongs. The default is -1, indicating no
+        association.
     '''
-    pass
-
-
-@dataclass
-class Node3d(Vertex3d):
-    '''
-    Data class representing three-dimensional nodes.
     
-    Parameters
-    ----------
-    id : int
-        Vertex ID.
-    x : float
-        `x`-coordinate.
-    y : float
-        `y`-coordinate.
-    z : float
-        `z`-coordinate.
-    '''
-    pass
+    id: int
+    x: float
+    y: float
+    z: float = None
+    gr: int = -1
+    idx: int = -1
+    
+    @property
+    def dims(self) -> int:
+        return 2 if self.z is None else 3
+    
+    def geometry(self) -> QgsGeometry:
+        return point_geometry(self.x, self.y)
 
 
 class NodeData(VertexData):
+    '''
+    Class for representing node data.
+    '''
+    
+    DEFAULT_NAME = 'nodes'
     
     def __init__(self, df, layer=None):
-        super().__init__(df)
+        super().__init__(df, layer)
+
+    def __iter__(self):
+        self._i = -1
+        self.__df = self._df.reset_index().astype('object')
+        return self
+
+    def __next__(self):
+        try:
+            self._i += 1
+            return Node(*self.__df.iloc[self._i].tolist())
+        except IndexError:
+            raise StopIteration
+
+    # == Descriptions ========================================================
     
+    def anodes(self, place_data: PlaceData, r: float) -> pd.DataFrame:
+        _df = pd.DataFrame(index=self._df.index, columns=list(place_data.df.index))
+        _df.index.name = 'id'
+        coords = self._df[['x', 'y']].to_numpy()
+        rsq = r ** 2
+        for place in place_data:
+            x, y = place.x, place.y
+            dx = coords[:,0] - x
+            dy = coords[:,1] - y
+            _df[place.id] = (dx**2 + dy**2 <= rsq)
+        groups = place_data.groups(r)
+        df = pd.DataFrame(index=_df.index, columns=list(range(len(groups))))
+        for group in place_data.groups(r):
+            member_ids = [m.id for m in group.members]
+            df[group.id] = np.max(_df[member_ids].to_numpy(), axis=1)
+        return df
+
+    def bnodes(self) -> Dict[int, List[int]]:
+        bnodes = defaultdict(list)
+        for n in self:
+            if n.gr != -1:
+                bnodes[n.gr].append((n.id, n.idx))
+        bnodes = dict(bnodes)
+        num_groups = len(bnodes)
+        for i in range(num_groups):
+            arr = np.array(bnodes[i])
+            arr = arr[np.argsort(arr[:,1])]
+            bnodes[i] = arr[:,0]
+        return bnodes
+
+    # == Constructors ========================================================
+
     @classmethod
     def from_gpkg(cls, gpkg, layername='nodes'):
         '''
@@ -103,7 +158,9 @@ class NodeData(VertexData):
             If the project contains multiple layers with the specified name.
         '''
         return super().from_ml(layername)
-    
+
+    # == Iteration ===========================================================
+
     def generate(self, report: Callable[[float], None] = lambda x: None
                  ) -> Generator[QgsFeature, None, None]:
         '''
@@ -120,25 +177,12 @@ class NodeData(VertexData):
         :class:`qgis.core.QgsFeature`
         '''
         N = len(self.df)
-        for i, node in enumerate(self.nodes(), 1):
+        for i, node in enumerate(self, 1):
             report(i/N*100)
             yield node.feature(i)
-    
-    def nodes(self):
-        '''
-        Yields nodes in the data set.
-        
-        Yields
-        ------
-        :class:`Node2d` or :class:`Node3d`
-        '''
-        if self.dims == 2:
-            for id, row in self.df.iterrows():
-                yield Node2d(id, *list(row))
-        elif self.dims == 3:
-            for id, row in self.df.iterrows():
-                yield Node3d(id, *list(row))
-    
+
+    # == Output ==============================================================
+
     def render(self, groupname: str = '', index: int = 0, **kwargs) -> None:
         '''
         Renders a newly created vector layer that is populated with node
@@ -164,13 +208,13 @@ class NodeData(VertexData):
             Returns renderer for the vertex layer.
         '''
         if self.layer is None:
-            self.layer = NodeLayer.create(self.crs.epsg, self.dims)
+            self.layer = NodeLayer.create(self.crs.epsg)
             self.layer.render(**kwargs)
         self.layer.populate(self.generate)
         if len(kwargs) > 0:
             self.layer.render(**kwargs)
         self.layer.add(groupname, index)
-    
+
     def to_gpkg(self, gpkg, layername='nodes'):
         '''
         Saves node features to a GPKG layer. If there exists a
@@ -201,16 +245,41 @@ class NodeData(VertexData):
             self.layer.save(gpkg, layername)
 
 
-class NodeLayer(VertexLayer):
+class NodeLayer(Layer):
     '''
     Class for representing a node layer.
     '''
-    
+
     @classmethod
-    def create(cls, crs: int, dims: int, layername: str = 'nodes'):
-        return super().create(crs, dims, layername)
-    
-    @classmethod
-    def renderer(cls, **kwargs):
-        kwargs.setdefault('color', (162,212,24))
-        return super().renderer(**kwargs)
+    def create(cls, crs: int, layername: str = 'nodes') -> 'NodeLayer':
+        '''
+        Returns an instance of :class:`VertexLayer`.
+        
+        Parameters
+        ----------
+        crs : int
+            EPSG code of the CRS in which vertex coordinates are represented.
+        layername : :obj:`str`, optional
+            Layer name. The default is 'vertices'.
+        
+        Returns
+        -------
+        :class:`VertexLayer`
+        '''
+        return super().create('point', crs, layername, Node.fields())
+
+    @staticmethod
+    def renderer(**kwargs) -> QgsSingleSymbolRenderer:
+        '''
+        Returns the renderer used for rendering vertices.
+        
+        Parameters
+        ----------
+        **kwargs : dict, optional
+            See keyword arguments for :func:`rnet.utils.symbols.marker_symbol`.
+        
+        Returns
+        -------
+        qgis.core.QgsSingleSymbolRenderer
+        '''
+        return rulebased_node_renderer(**kwargs)

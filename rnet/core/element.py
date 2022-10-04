@@ -24,7 +24,7 @@ class Element(ABC):
         return [getattr(self, name)
                 for name, field in self.__dataclass_fields__.items()
                 if field.repr]
-    
+
     def feature(self, fid: int) -> QgsFeature:
         '''
         Returns feature.
@@ -52,6 +52,11 @@ class Element(ABC):
         return [Field(name, field.type.__name__)
                 for name, field in cls.__dataclass_fields__.items()
                 if field.repr]
+    
+    @classmethod
+    def field_names(cls, exclude_id: bool = True) -> List[str]:
+        names = [f.name for f in cls.fields()]
+        return names[1:] if exclude_id else names
     
     @abstractmethod
     def geometry(self) -> QgsGeometry:

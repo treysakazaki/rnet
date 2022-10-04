@@ -1,27 +1,34 @@
 from dataclasses import dataclass
 from typing import List
+import numpy as np
 
-from rnet.core.graphdata import GraphData
-from rnet.core.shortestpath import ShortestPathEngine
+from rnet.core.element import Element
+from rnet.utils import line_geometry, single_line_renderer
+from rnet.core.layer import Layer
 
 
 @dataclass
-class Path:
+class Path(Element):
     
     sequence: List[int]
     length: float
+    coords: np.ndarray
+    S: int = None
+    G: int = None
     
     def __post_init__(self):
         self.S, self.G = self.sequence[0], self.sequence[-1]
 
+    def geometry(self):
+        return line_geometry(self.coords)
 
-class PathFactory:
+
+class PathLayer(Layer):
     
-    def __init__(self, gdata: GraphData) -> None:
-        self.engine = ShortestPathEngine(gdata)
-    
-    def from_route(self, route):
-        cost = 0.0
-        for k in range(len(route) - 1):
-            cost += self.engine.query(route[k], route[k+1])
-        return Path(route, cost)
+    @classmethod
+    def create(cls, crs: int, layername: str = 'path') -> 'PathLayer':
+        return super().create('linestring', crs, layername, Path.fields())
+
+    @staticmethod
+    def renderer(**kwargs):
+        return single_line_renderer(**kwargs)

@@ -1,12 +1,13 @@
 import os
-from typing import List
+import pandas as pd
+from typing import List, Union
 try:
     from qgis.core import QgsProject
 except:
     pass
 
 
-__all__ = ['abspath', 'relpath']
+__all__ = ['abspath', 'relpath', 'read_csv']
 
 
 def cwd() -> str:
@@ -118,3 +119,29 @@ def names_with_ext(ext, directory='') -> List[str]:
     filenames = os.listdir(abspath(directory))
     return list(filter(lambda path: os.path.splitext(path)[1] == ext, filenames))
 
+
+def read_csv(path_to_csv: str, index: Union[str, List[str]],
+             columns: List[str]) -> pd.DataFrame:
+    """
+    Read CSV file with column headers in the first row.
+    
+    Parameters
+    ----------
+    path_to_csv : str
+        Path to CSV file.
+    index : :obj:`str` or :obj:`List[str]`
+        Name(s) of column(s) used for index.
+    columns : List[str]
+        List of column names.
+    
+    Returns
+    -------
+    :class:`pandas.DataFrame`
+        Frame with single or multi index.
+    """
+    path_to_csv = abspath(path_to_csv)
+    df = pd.read_csv(path_to_csv, header=0, index_col=index,
+                     usecols=[index]+columns)
+    df.index.name = index
+    df = df[columns]
+    return df

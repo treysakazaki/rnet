@@ -6,3 +6,4 @@ from rnet.utils.labeling import *
 from rnet.utils.feature import *
 from rnet.utils.project import *
 from rnet.utils import gdal_merge
+from rnet.utils.algorithms import *

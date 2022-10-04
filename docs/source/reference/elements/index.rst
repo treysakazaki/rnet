@@ -13,6 +13,7 @@ Basic element types
     :maxdepth: 1
 
     edges
+    nodes
     vertices
 
 Additional element types

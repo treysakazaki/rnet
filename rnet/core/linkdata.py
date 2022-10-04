@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Callable, Generator, Tuple, Union
+from typing import Callable, Dict, Generator, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -89,8 +89,11 @@ class LinkData:
         Layer for rendering link features.
     '''
     
-    df: pd.DataFrame = field(repr=False)
-    layer: 'LinkLayer' = None
+    DEFAULT_NAME = 'links'
+    
+    def __init__(self, df: pd.DataFrame, layer: 'LinkLayer' = None):
+        self.df = df
+        self.layer = layer
     
     def __contains__(self, ij: Tuple[int, int]) -> bool:
         return ij in self.df.index
@@ -107,7 +110,7 @@ class LinkData:
         
         Returns
         -------
-        pandas.DataFrame
+        :class:`pandas.DataFrame`
             Frame with multi-index ['i', 'j'] and columns ['x0', 'y0', 'xf',
             'yf'].
         '''
@@ -356,6 +359,21 @@ class LinkData:
         if len(kwargs) > 0:
             self.layer.render(self.tags, **kwargs)
         self.layer.add(groupname, index)
+    
+    def split(self, splits: Dict[Tuple[int, int], List[int]]):
+        links = self.df.to_dict()['tag']
+        for (i, j), points in splits.items():
+            tag = links.pop((i, j))
+            vseq = [i, *points, j]
+            for k in range(len(vseq) - 1):
+                links[(vseq[k], vseq[k+1])] = tag
+        arrays = np.sort(list(links.keys())).T
+        df = pd.DataFrame(
+            list(links.values()),
+            index=pd.MultiIndex.from_arrays(arrays, names=('i', 'j')),
+            columns=['tag']
+            )
+        return LinkData(df)
     
     @property
     def tags(self):

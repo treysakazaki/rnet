@@ -41,9 +41,8 @@ class ShortestPathEngine:
         df = gdata.edge_lengths()
         costs = dict(zip(map(tuple, df.index), df['length']))
         if method == 'dijkstra':
-            engine = Dijkstra(costs)
-            self.query = lambda s, g: engine.query(s, g)
-        del df, costs
+            self._engine = Dijkstra(costs)
+            self.query = lambda s, g: self._engine.query(s, g)
     
     def rand(self):
         return self.query(*self._rand())
@@ -148,6 +147,7 @@ class Dijkstra:
         while queue:
             c, n = heappop(queue)
             if n == g:
+                heappush(queue, (c, n))
                 break
             for m in self.neighbors[n].difference(visited):
                 d = c + self.cost(n, m)

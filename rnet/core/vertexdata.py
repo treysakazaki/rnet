@@ -1,3 +1,4 @@
+import dataclasses
 from dataclasses import dataclass
 from typing import Callable, Generator, List, Union
 
@@ -5,11 +6,10 @@ import numpy as np
 import pandas as pd
 
 try:
-    from PyQt5.QtCore import QVariant
     from qgis.core import (
+        NULL,
         QgsProject,
         QgsFeature,
-        QgsField,
         QgsGeometry,
         QgsSingleSymbolRenderer
         )
@@ -18,22 +18,18 @@ except:
 
 from rnet.core.crs import CRS
 from rnet.core.element import Element
-from rnet.core.field import Field
 from rnet.core.elevationdata import ElevationQueryEngine
 from rnet.core.layer import Layer, GpkgData
-from rnet.utils import (
-    point_geometry,
-    single_marker_renderer
-    )
+from rnet.utils import point_geometry, single_marker_renderer
 
 
-__all__ = ['Vertex', 'Vertex2d', 'Vertex3d', 'VertexData', 'VertexLayer']
+__all__ = ['Vertex', 'VertexData', 'VertexLayer']
 
 
 @dataclass
 class Vertex(Element):
     '''
-    Base class for two- or three-dimensional vertices.
+    Class for representing a vertex item.
     
     Vertices are used to define road geometries.
     
@@ -41,75 +37,28 @@ class Vertex(Element):
     ----------
     id : int
         Vertex ID.
-    x : float
-        :math:`x`-coordinate.
-    y : float
-        :math:`y`-coordinate.
+    x, y : float
+        :math:`x`- and :math:`y`-coordinates.
     z : :obj:`float`, optional
         :math:`z`-coordinate. The default is None.
+    gr : :obj:`int`, optional
+        Group to which the vertex belongs. The default is -1, indicating no
+        association.
     '''
     
     id: int
     x: float
     y: float
     z: float = None
+    gr: int = -1
+    idx: int = -1
     
     @property
     def dims(self) -> int:
-        if self.z is None:
-            return 2
-        else:
-            return 3
-
-
-@dataclass
-class Vertex2d(Element):
-    '''
-    Data class representing two-dimensional vertices.
-    
-    Parameters
-    ----------
-    id : int
-        Vertex ID.
-    x : float
-        `x`-coordinate.
-    y : float
-        `y`-coordinate.
-    '''
-    
-    id: int
-    x: float
-    y: float
+        return 2 if self.z is None else 3
     
     def geometry(self) -> QgsGeometry:
-        '''
-        Returns the vertex geometry.
-        
-        Returns
-        -------
-        qgis.core.QgsGeometry
-        '''
         return point_geometry(self.x, self.y)
-
-
-@dataclass
-class Vertex3d(Vertex2d):
-    '''
-    Data class representing three-dimensional vertices.
-    
-    Parameters
-    ----------
-    id : int
-        Vertex ID.
-    x : float
-        `x`-coordinate.
-    y : float
-        `y`-coordinate.
-    z : float
-        `z`-coordinate.
-    '''
-    
-    z: float
 
 
 class VertexData:
@@ -127,93 +76,51 @@ class VertexData:
     layer : :class:`VertexLayer`, optional
         Layer for rendering vertex features.
     '''
-    
+
+    DEFAULT_NAME = 'vertices'
+
     def __init__(self, df: pd.DataFrame, layer: 'VertexLayer' = None):
-        self.df = df
+        for field_name in Vertex.field_names():
+            field = Vertex.__dataclass_fields__[field_name]
+            if field_name not in df.columns:
+                default = field.default
+                if isinstance(default, dataclasses._MISSING_TYPE):
+                    raise ValueError('missing required column')
+                df[field_name] = default
+            else:
+                df[field_name] = df[field_name].astype(field.type)
+        df = df[Vertex.field_names()]
+        df.index = df.index.astype(int)
+        self._df = df
         self.layer = layer
-        
-    @property
-    def crs(self):
-        ''':class:`CRS`: CRS in which vertex coordinates are represented.
-        
-        Raises
-        ------
-        KeyError
-            If ``crs`` attribute is missing from data frame.
+
+    def __iter__(self):
+        self._i = -1
+        self.__df = self._df.reset_index().astype('object')
+        return self
+
+    def __next__(self):
+        try:
+            self._i += 1
+            return Vertex(*self.__df.iloc[self._i].tolist())
+        except IndexError:
+            raise StopIteration
+
+    # == Constructors ========================================================
+
+    @classmethod
+    def empty(cls) -> 'VertexData':
         '''
-        return CRS(self.df.attrs['crs'])
-    
-    @property
-    def dims(self):
-        '''int: Vertex dimensions.'''
-        return len(self.df.columns)
-    
-    def elevations(self, engine: ElevationQueryEngine,
-                   include_xy: bool = False) -> pd.DataFrame:
-        '''
-        Returns frame containing vertex elevations.
-        
-        Parameters
-        ----------
-        engine : :class:`ElevationQueryEngine`
-            Engine for querying vertex elevations.
-        include_xy : :obj:`bool`, optional
-            If True, columns 'x' and 'y' are included in the resulting frame
-            in addition to the column 'z'. The default is False.
+        Return empty vertex dataset.
         
         Returns
         -------
-        :class:`pandas.DataFrame`
-            If `include_xy` is True, frame with index 'id' and columns
-            ['x', 'y', 'z']. Otherwise, frame with index 'id' and column 'z'.
-        
-        See also
-        --------
-        :meth:`ElevationData.query`
+        :class:`VertexData`
         '''
-        if engine.crs == self.crs:
-            elevations = list(engine.query(self.df[['x', 'y']].to_numpy()))
-        else:
-            transformed = self.crs.transform(self.df[['x', 'y']].to_numpy(),
-                                             engine.crs)
-            elevations = list(engine.query(transformed))
-        
-        if include_xy:
-            return pd.DataFrame(
-                np.column_stack([self.df.to_numpy(), elevations]),
-                index=self.df.index, columns=['x', 'y', 'z'])
-        else:
-            return pd.DataFrame(elevations, index=self.df.index, columns=['z'])
-    
-    def expand(self, engine: ElevationQueryEngine) -> None:
-        '''
-        Add 'z' column representing vertex elevations.
-        
-        Parameters
-        ----------
-        engine : :class:`ElevationQueryEngine`
-            Engine for querying vertex elevations.
-        '''
-        if self.dims == 3:
-            return
-        
-        if engine.crs == self.crs:
-            coords = self.df[['x', 'y']].to_numpy()
-        else:
-            coords = self.crs.transform(self.df[['x', 'y']].to_numpy(),
-                                        engine.crs)
-        self.df = pd.concat([
-            self.df,
-            pd.DataFrame(engine.query(coords), index=self.df.index, columns=['z'])
-            ], axis=1)
-    
-    def flatten(self) -> None:
-        '''
-        Remove 'z' column.
-        '''
-        if self.dims == 2:
-            return
-        self.df = self.df[['x', 'y']]
+        df = pd.DataFrame([], columns=Vertex.field_names())
+        df.index.name = 'id'
+        df.attrs['crs'] = None
+        return cls(df)
     
     @classmethod
     def _from_layer(cls, layer: 'VertexLayer') -> 'VertexData':
@@ -230,7 +137,8 @@ class VertexData:
         :class:`VertexData`
         '''
         attrs = np.array([f.attributes() for f in layer.features()])
-        df = pd.DataFrame(attrs[:,2:].astype(float), index=attrs[:,1],
+        attrs = np.where(attrs == NULL, None, attrs).astype(float)
+        df = pd.DataFrame(attrs[:,2:], index=attrs[:,1],
                           columns=layer.field_names[2:])
         df.index.name = 'id'
         df.attrs['crs'] = layer.crs.epsg
@@ -293,30 +201,149 @@ class VertexData:
             raise ValueError(f'no map layers named {layername!r}')
         else:
             raise ValueError(f'found multiple map layers named {layername!r}')
-    
-    def generate(self, report: Callable[[float], None] = lambda x: None
-                 ) -> Generator[QgsFeature, None, None]:
+
+    # == Descriptions ========================================================
+
+    @property
+    def cols(self):
+        '''List[str]: List of active columns.'''
+        cols = []
+        for field_name in Vertex.field_names():
+            default = Vertex.__dataclass_fields__[field_name].default
+            if isinstance(default, dataclasses._MISSING_TYPE):
+                cols.append(field_name)
+            elif default is None:
+                if not np.all(self._df[field_name].isnull()):
+                    cols.append(field_name)
+            elif default is not None:
+                if np.any(self._df[field_name] != default):
+                    cols.append(field_name)
+        return cols
+
+    @property
+    def crs(self):
+        ''':class:`CRS`: CRS in which vertex coordinates are represented.
+        
+        Raises
+        ------
+        KeyError
+            If ``crs`` attribute is missing from data frame.
         '''
-        Yields vertex features. Vertex features have point geometry and
-        attributes 'id', 'x', and 'y'.
+        return CRS(self.df.attrs['crs'])
+
+    @property
+    def dims(self):
+        '''int: Vertex dimensions.'''
+        return 3 if 'z' in self.df.columns else 2
+
+    @property
+    def df(self):
+        ''':class:`pandas.DataFrame`: Frame summarizing vertex data.'''
+        return self._df[self.cols]
+
+    def elevations(self, engine: ElevationQueryEngine,
+                   include_xy: bool = False) -> pd.DataFrame:
+        '''
+        Returns frame containing vertex elevations.
         
         Parameters
         ----------
-        report : :obj:`Callable[[float], None]`, optional
-            Function for reporting generator progress.
+        engine : :class:`ElevationQueryEngine`
+            Engine for querying vertex elevations.
+        include_xy : :obj:`bool`, optional
+            If True, columns 'x' and 'y' are included in the resulting frame
+            in addition to the column 'z'. The default is False.
         
-        Yields
-        ------
-        :class:`qgis.core.QgsFeature`
+        Returns
+        -------
+        :class:`pandas.DataFrame`
+            If `include_xy` is True, frame with index 'id' and columns
+            ['x', 'y', 'z']. Otherwise, frame with index 'id' and column 'z'.
+        
+        See also
+        --------
+        :meth:`ElevationData.query`
         '''
-        N = len(self.df)
-        for i, vertex in enumerate(self.vertices(), 1):
-            report(i/N*100)
-            yield vertex.feature(i)
-    
+        if engine.crs == self.crs:
+            elevations = list(engine.query(self.df[['x', 'y']].to_numpy()))
+        else:
+            transformed = self.crs.transform(self.df[['x', 'y']].to_numpy(),
+                                             engine.crs)
+            elevations = list(engine.query(transformed))
+        
+        if include_xy:
+            return pd.DataFrame(
+                np.column_stack([self.df.to_numpy(), elevations]),
+                index=self.df.index, columns=['x', 'y', 'z'])
+        else:
+            return pd.DataFrame(elevations, index=self.df.index, columns=['z'])
+
     def info(self):
         pass
     
+    def within_circle(self, x: float, y: float, r: float) -> pd.DataFrame:
+        '''
+        Returns subset of vertices that are located within a circle.
+        
+        Parameters
+        ----------
+        x, y : float
+            Circle center.
+        r : float
+            Circle radius.
+        
+        Returns
+        -------
+        :class:`pandas.DataFrame`
+            Frame containing only the vertices that are located within the
+            circle.
+        '''
+        xmin, xmax = x - r, x + r
+        ymin, ymax = y - r, y + r
+        mask = np.full(len(self.df), True)
+        coords = self.df.to_numpy()
+        if xmin is not None:
+            mask = np.min([mask, coords[:,0] >= xmin], axis=0)
+        if ymin is not None:
+            mask = np.min([mask, coords[:,1] >= ymin], axis=0)
+        if xmax is not None:
+            mask = np.min([mask, coords[:,0] <= xmax], axis=0)
+        if ymax is not None:
+            mask = np.min([mask, coords[:,1] <= ymax], axis=0)
+        df = self.df.loc[mask]
+        coords = df.to_numpy()
+        dx = coords[:,0] - x
+        dy = coords[:,1] - y
+        mask = np.min([mask, dx**2 + dy**2 <= r**2], axis=0)
+        return df.loc[mask]
+
+    # == Manipulation ========================================================
+
+    def expand(self, engine: ElevationQueryEngine) -> None:
+        '''
+        Add 'z' column representing vertex elevations.
+        
+        Parameters
+        ----------
+        engine : :class:`ElevationQueryEngine`
+            Engine for querying vertex elevations.
+        '''
+        if self.dims == 3:
+            return
+        
+        if engine.crs == self.crs:
+            coords = self.df[['x', 'y']].to_numpy()
+        else:
+            coords = self.crs.transform(self.df[['x', 'y']].to_numpy(),
+                                        engine.crs)
+        self._df['z'] = list(engine.query(coords))
+
+    def flatten(self) -> None:
+        '''
+        Remove 'z' column.
+        '''
+        self._df['z'] = None
+
     def masked(self, *, xmin: float = None, ymin: float = None,
                zmin: float = None, xmax: float = None, ymax: float = None,
                zmax: float = None) -> 'VertexData':
@@ -349,6 +376,89 @@ class VertexData:
             mask = np.min([mask, coords[:,2] <= zmax], axis=0)
         return VertexData(self.df.loc[mask], self.crs)
 
+    def transform(self, dst: int) -> None:
+        '''
+        Transforms :math:`(x, y)` coordinates stored in the ``df`` attribute
+        to a new coordinate system.
+        
+        Parameters
+        ----------
+        dst : int
+            EPSG code of destination CRS.
+        
+        Raises
+        ------
+        EPSGError
+            If the EPSG code of the destination CRS is invalid.
+        
+        See also
+        --------
+        :meth:`transformed`
+        '''
+        if dst == self.crs.epsg:
+            pass
+        else:
+            coords = self.crs.transform(self._df[['x', 'y']].to_numpy(), dst)
+            self._df['x'] = coords[:,0]
+            self._df['y'] = coords[:,1]
+            self._df.attrs['crs'] = dst
+            self.layer = None
+
+    def transformed(self, dst: int) -> 'VertexData':
+        '''
+        Returns a new :class:`VertexData` instance with vertex coordinates
+        transformed.
+        
+        Parameters
+        ----------
+        dst : int
+            EPSG code of destination CRS.
+        
+        Returns
+        -------
+        :class:`VertexData`:
+        
+        Raises
+        ------
+        EPSGError
+            If the EPSG code of the destination CRS is invalid.
+        
+        See also
+        --------
+        :meth:`transform`
+        '''
+        df = self.df.copy()
+        if dst == self.crs:
+            pass
+        else:
+            coords = self.crs.transform(df[['x', 'y']].to_numpy(), dst)
+            df['x'] = coords[:,0]
+            df['y'] = coords[:,1]
+            df.attrs['crs'] = dst
+        return VertexData(df, dst)
+
+    # == Iteration ===========================================================
+
+    def generate(self, report: Callable[[float], None] = lambda x: None
+                 ) -> Generator[QgsFeature, None, None]:
+        '''
+        Yields vertex features. Vertex features have point geometry and
+        attributes 'id', 'x', and 'y'.
+        
+        Parameters
+        ----------
+        report : :obj:`Callable[[float], None]`, optional
+            Function for reporting generator progress.
+        
+        Yields
+        ------
+        :class:`qgis.core.QgsFeature`
+        '''
+        N = len(self.df)
+        for i, vertex in enumerate(self, 1):
+            report(i/N*100)
+            yield vertex.feature(i)
+
     def rand(self, N: int = 1, replace: bool = False) -> List[int]:
         '''
         Returns the IDs of `N` randomly chosen vertices.
@@ -366,7 +476,9 @@ class VertexData:
         List[int]
         '''
         return list(np.random.choice(list(self.df.index), N, replace))
-    
+
+    # == Output ==============================================================
+
     def render(self, groupname: str = '', index: int = 0, **kwargs) -> None:
         '''
         Renders vertex features. Existing features are overwritten.
@@ -393,7 +505,7 @@ class VertexData:
             Returns renderer for the vertex layer.
         '''
         if self.layer is None:
-            self.layer = VertexLayer.create(self.crs.epsg, self.dims)
+            self.layer = VertexLayer.create(self.crs.epsg)
             self.layer.render(**kwargs)
         self.layer.populate(self.generate)
         if len(kwargs) > 0:
@@ -433,95 +545,14 @@ class VertexData:
         else:
             self.layer.save(gpkg, layername)
 
-    def transform(self, dst: int) -> None:
-        '''
-        Transforms :math:`(x, y)` coordinates stored in the ``df`` attribute
-        to a new coordinate system.
-        
-        Parameters
-        ----------
-        dst : int
-            EPSG code of destination CRS.
-        
-        Raises
-        ------
-        EPSGError
-            If the EPSG code of the destination CRS is invalid.
-        
-        See also
-        --------
-        :meth:`transformed`
-        '''
-        if dst == self.crs.epsg:
-            pass
-        else:
-            coords = self.crs.transform(self.df[['x', 'y']].to_numpy(), dst)
-            self.df['x'] = coords[:,0]
-            self.df['y'] = coords[:,1]
-            self.crs = CRS(dst)
-            self.layer = None
-
-    def transformed(self, dst: int) -> 'VertexData':
-        '''
-        Returns a new :class:`VertexData` instance with vertex coordinates
-        transformed.
-        
-        Parameters
-        ----------
-        dst : int
-            EPSG code of destination CRS.
-        
-        Returns
-        -------
-        :class:`VertexData`:
-        
-        Raises
-        ------
-        EPSGError
-            If the EPSG code of the destination CRS is invalid.
-        
-        See also
-        --------
-        :meth:`transform`
-        '''
-        df = self.df.copy()
-        if dst == self.crs:
-            pass
-        else:
-            coords = self.crs.transform(df[['x', 'y']].to_numpy(), dst)
-            df['x'] = coords[:,0]
-            df['y'] = coords[:,1]
-        return VertexData(df, dst)
-
-    def vertices(self) -> Generator[Union[Vertex2d, Vertex3d], None, None]:
-        '''
-        Yields vertices in the data set.
-        
-        Yields
-        ------
-        :class:`Vertex2d` or :class:`Vertex3d`
-        '''
-        if self.dims == 2:
-            for id, row in self.df.iterrows():
-                yield Vertex2d(id, *list(row))
-        elif self.dims == 3:
-            for id, row in self.df.iterrows():
-                yield Vertex3d(id, *list(row))
-
 
 class VertexLayer(Layer):
     '''
     Class for representing a vertex layer.
     '''
 
-    @property
-    def dims(self):
-        '''int: Number of vertex dimensions.'''
-        return len(self.vl.fields()) - 2
-
     @classmethod
-    def create(cls, crs: int, dims: int, layername: str = 'vertices'
-               ) -> 'VertexLayer':
+    def create(cls, crs: int, layername: str = 'vertices') -> 'VertexLayer':
         '''
         Returns an instance of :class:`VertexLayer`.
         
@@ -529,28 +560,14 @@ class VertexLayer(Layer):
         ----------
         crs : int
             EPSG code of the CRS in which vertex coordinates are represented.
-        dims : {2, 3}
-            Vertex dimensions.
         layername : :obj:`str`, optional
             Layer name. The default is 'vertices'.
         
         Returns
         -------
         :class:`VertexLayer`
-        
-        Raises
-        ------
-        ValueError
-            If `dims` is neither 2 or 3.
         '''
-        fields = [Field('id', 'int'), Field('x', 'double'), Field('y', 'double')]
-        if dims == 2:
-            pass
-        elif dims == 3:
-            fields.append(Field('z', 'double'))
-        else:
-            raise ValueError("arg 'dims' expected value 2 or 3")
-        return super().create('point', crs, layername, fields)
+        return super().create('point', crs, layername, Vertex.fields())
 
     @staticmethod
     def renderer(**kwargs) -> QgsSingleSymbolRenderer:
@@ -568,15 +585,3 @@ class VertexLayer(Layer):
         '''
         kwargs.setdefault('color', (210,210,210))
         return single_marker_renderer(**kwargs)
-
-    def toggle_dims(self) -> None:
-        '''
-        Toggle between two- and three-dimensional vertices.
-        '''
-        if self.dims == 2:
-            self.vl.dataProvider().addAttributes([QgsField('z', QVariant.Double)])
-        elif self.dims == 3:
-            self.vl.dataProvider().deleteAttributes([4])
-        else:
-            raise ValueError('unexpected number of fields')
-        self.vl.updateFields()

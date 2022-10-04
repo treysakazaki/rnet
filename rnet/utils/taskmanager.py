@@ -36,6 +36,7 @@ def create_and_queue(task, *args, **kwargs):
     queue.append(globals()[task_name])
     if QgsApplication.taskManager().count() == 0:
         next_task()
+    return globals()[task_name]
 
 
 def create_and_run(task, *args, **kwargs):
